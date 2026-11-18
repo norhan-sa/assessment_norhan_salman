@@ -1,94 +1,153 @@
-# Task management API — starter repository
+# Task management API
 
-Starting point for the technical assessment: TypeScript, Node.js, Express and
-MongoDB (via Mongoose), with the database connection already configured. No
-task features are implemented yet.
+A small REST API for managing tasks, built with TypeScript, Express and MongoDB (Mongoose).
 
-## Getting started
+## How to run
+
+You need Node 20 or newer.
 
 ```bash
 npm install
+cp .env.example .env
 ```
 
-Start MongoDB, using whichever option suits your machine:
+Start MongoDB. Pick one:
 
 ```bash
-npm run db:memory   # in-memory MongoDB, no install needed (data is lost on stop)
+npm run db:memory   # in-memory MongoDB, nothing to install
+npm run db:up       # MongoDB in Docker
 ```
 
-```bash
-npm run db:up       # MongoDB in Docker (data is kept in a volume)
-```
-
-Then, in a second terminal, start the API with auto-reload:
+Then in another terminal:
 
 ```bash
 npm run dev
 ```
 
-Check it is running:
+The API runs on http://localhost:3000.
+
+## Tests
 
 ```bash
-curl http://localhost:3000/health
+npm test
 ```
 
-Settings live in `.env` (see `.env.example`): `HOST` (defaults to
-`localhost`), `PORT` and `MONGODB_URI`.
+The tests use an in-memory MongoDB, so you don't need a database running.
 
-## Scripts
+## Task fields
 
-| Script               | What it does                                        |
-| -------------------- | --------------------------------------------------- |
-| `npm run dev`        | Run the API with auto-reload                        |
-| `npm test`           | Run the tests against a throwaway in-memory MongoDB |
-| `npm run test:watch` | Run the tests in watch mode                         |
-| `npm run typecheck`  | Type-check the whole project                        |
-| `npm run build`      | Compile `src` to `dist`                             |
+| Field       | Notes                                           |
+| ----------- | ----------------------------------------------- |
+| id          | generated                                       |
+| title       | required, 1 to 200 characters                   |
+| description | optional, up to 2000 characters                 |
+| status      | `todo`, `in_progress` or `done`, default `todo` |
+| priority    | required, `low`, `medium` or `high`             |
+| dueDate     | optional, ISO date like `2026-12-01T09:00:00Z`  |
+| createdAt   | generated                                       |
+| updatedAt   | generated                                       |
+
+## Endpoints
+
+| Method | Path           | What it does                               |
+| ------ | -------------- | ------------------------------------------ |
+| POST   | /tasks         | Create a task                              |
+| GET    | /tasks         | List tasks                                 |
+| PATCH  | /tasks/:id     | Update a task                              |
+| DELETE | /tasks/:id     | Delete a task                              |
+| GET    | /tasks/overdue | Tasks past their due date that aren't done |
+| GET    | /health        | Health check                               |
+
+`GET /tasks` and `GET /tasks/overdue` accept these query params:
+
+- `status` and `priority` to filter
+- `page` (default 1) and `limit` (default 20, max 50)
+
+## Examples
+
+Create a task:
+
+```bash
+curl -X POST http://localhost:3000/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Buy milk", "priority": "low", "dueDate": "2026-12-01T09:00:00Z"}'
+```
+
+List high priority tasks that are still todo:
+
+```bash
+curl "http://localhost:3000/tasks?status=todo&priority=high"
+```
+
+Mark a task as done:
+
+```bash
+curl -X PATCH http://localhost:3000/tasks/<id> \
+  -H "Content-Type: application/json" \
+  -d '{"status": "done"}'
+```
+
+## Responses
+
+Every response has the same shape.
+
+Success:
+
+```json
+{ "success": true, "data": { "id": "...", "title": "Buy milk" } }
+```
+
+Error:
+
+```json
+{
+  "success": false,
+  "data": null,
+  "errors": [{ "message": "Title is required and must be a string", "field": "title" }]
+}
+```
+
+Status codes: `201` when a task is created, `400` for invalid input or a bad id, `404` when the
+task doesn't exist.
 
 ## Project layout
 
 ```
 src/
-  server.ts                 entry point: connects to MongoDB, starts the HTTP server
-  app.ts                    builds the Express app; register routers here
-  config/env.ts             reads and validates environment variables
-  config/database.ts        MongoDB connection helpers
-  middleware/errorHandler.ts  JSON 404 and error responses
+  server.ts                   starts the server
+  app.ts                      express app and routes
+  config/                     env and database connection
+  middleware/errorHandler.ts  404 and error responses
+  tasks/
+    tasks_model.ts            mongoose model
+    tasks_schema.ts           zod validation
+    tasks_routes.ts           the endpoints
+  utils/response.ts           response helpers
 tests/
-  setup.ts                  starts an in-memory MongoDB and empties it between tests
-  health.test.ts            example test using supertest
-scripts/dev-db.ts           the in-memory MongoDB behind `npm run db:memory`
+  health.test.ts
+  tasks.test.ts
 ```
 
-Installed and ready to use: `express`, `mongoose`, `zod` (validation),
-`vitest` and `supertest` (testing).
+## Notes
 
-## The assignment
+What is done:
 
-Build a small REST API for managing tasks.
+- All five endpoints from the assignment
+- Input validation with zod
+- Pagination on the list endpoints
+- Tests for every endpoint
 
-Each task has:
+Decisions:
 
-- a unique identifier
-- a title and description
-- a status: `todo`, `in_progress` or `done`
-- a priority: `low`, `medium` or `high`
-- a creation timestamp
-- an optional due date
+- Unknown fields in the body are rejected instead of ignored, so typos don't pass silently.
+- `PATCH` needs at least one field.
+- A task is overdue when its due date is before now and its status is not `done`.
+- Tasks are listed newest first. Overdue tasks are listed by due date, oldest first.
+- `DELETE` removes the task for real, there is no soft delete.
 
-Endpoints:
+What I would do next:
 
-1. `POST /tasks` — create a task, with a default status of `todo`
-2. `GET /tasks` — list tasks, optionally filtered by status or priority
-3. `PATCH /tasks/:id` — update a task's status, priority or other properties
-4. `DELETE /tasks/:id` — remove a task
-5. `GET /tasks/overdue` — tasks whose due date has passed and whose status is not `done`
-
-Also consider input validation, unexpected situations, and keeping the code
-understandable and maintainable. Tests and documentation are welcome.
-
-## What to submit
-
-- Source code (Git repository or ZIP)
-- Screen recording
-- A brief note: what you completed, what you would do next, and decisions worth mentioning
+- Return the total count with the list so clients can build pagination
+- Add an index on `status` and `dueDate`
+- Add `GET /tasks/:id`
+- Add authentication so each user only sees their own tasks

@@ -18,6 +18,7 @@ describe("unknown routes", () => {
     const response = await request(app).get("/does-not-exist");
 
     expect(response.status).toBe(404);
-    expect(response.body.error).toContain("not found");
+    expect(response.body.success).toBe(false);
+    expect(response.body.errors[0].message).toContain("not found");
   });
 });
